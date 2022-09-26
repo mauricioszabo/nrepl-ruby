@@ -1,0 +1,14 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    bencode (0.8.2)
+
+PLATFORMS
+  -darwin-21
+  arm64-darwin-21
+
+DEPENDENCIES
+  bencode
+
+BUNDLED WITH
+   2.3.8
