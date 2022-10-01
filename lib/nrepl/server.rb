@@ -3,12 +3,17 @@
 # A Ruby port of ogion https://gitlab.com/technomancy/ogion &
 # https://github.com/borkdude/nrepl-server/blob/master/src/borkdude/nrepl_server.clj
 
-require 'set'
 require 'bencode'
 require 'socket'
 
 module NREPL
   class Server
+    DEFAULT_EXIT_PROC = lambda do
+      puts "Goodbye for now."
+      Thread.exit
+      exit(0)
+    end
+
     attr_reader :debug, :port, :host
     alias debug? debug
 
@@ -24,6 +29,8 @@ module NREPL
 
     private
 
+    attr_reader :irb
+
     def response_for(old_msg, msg)
       msg.merge('session' => old_msg.fetch('session', 'none'), 'id' => old_msg.fetch('id', 'unknown'))
     end
@@ -34,12 +41,12 @@ module NREPL
       client.flush
     end
 
-    def eval_msg(client, msg, binding)
+    def eval_msg(client, msg)
       puts "Eval: #{msg.inspect}" if debug?
 
       str   = msg['code']
       code  = str == 'nil' ? nil : str
-      value = code.nil? ? nil : eval(code, binding)
+      value = code.nil? ? nil : eval(code)
 
       send_msg(client, response_for(msg, { 'value' => value.to_s, 'status' => ['done'] }))
     end
@@ -49,6 +56,15 @@ module NREPL
 
       id = rand(4294967087).to_s(16)
       send_msg(client, response_for(msg, { 'new_session' => id, 'status' => ['done'] }))
+    end
+
+    def describe_msg(client, msg)
+      versions = {
+        ruby: RUBY_VERSION,
+        nrepl: NREPL::VERSION,
+      }
+
+      send_msg(client, response_for(msg, { 'versions' => versions }))
     end
 
     # @param [TCPSocket] client
@@ -71,6 +87,9 @@ module NREPL
       puts "Running in debug mode" if debug?
       record_port
 
+      Signal.trap("INT", &DEFAULT_EXIT_PROC)
+      Signal.trap("TERM", &DEFAULT_EXIT_PROC)
+
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
@@ -78,13 +97,20 @@ module NREPL
           puts "Received: #{msg.inspect}" if debug?
           next unless msg
 
-          register_session(client, msg) if msg['op'] == 'clone'
-
-          begin
-            eval_msg(client, msg, binding)
-          rescue => e
-            send_exception(client, msg, e)
-          end if msg['op'] == 'eval'
+          case msg['op']
+          when 'clone'
+            register_session(client, msg)
+          when 'describe'
+            describe_msg(client, msg)
+          when 'eval'
+            begin
+              eval_msg(client, msg)
+            rescue => e
+              send_exception(client, msg, e)
+            end
+          else
+            raise "unknown operation: #{msg['op'].inspect}"
+          end
         end
       end
     end

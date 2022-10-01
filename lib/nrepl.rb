@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'nrepl/version'
+
 module NREPL
   DEFAULT_PORT  = 7888
   DEFAULT_HOST  = '127.0.0.1'

@@ -23,7 +23,11 @@ module NREPL
     public
 
     def open?
-      !socket.nil?
+      !closed?
+    end
+
+    def closed?
+      socket.nil?
     end
 
     def open
@@ -46,11 +50,12 @@ module NREPL
       open
     end
 
+    # @param [Hash] msg
     def write(msg)
-      raise "need to open first before writing" unless open?
+      raise "need to open first before writing" if closed?
 
-      msg.update('id' => @current_id += 1)
-      msg.update('session' => current_session) if current_session
+      msg.merge!('id' => @current_id += 1)
+      msg.merge!('session' => current_session) if current_session
 
       socket.write(msg.bencode)
       socket.flush
@@ -62,13 +67,16 @@ module NREPL
       end
     end
 
+    # @param [String] code
+    #
+    # @return [String]
     def eval(code)
       write('op' => 'eval', 'code' => code)
       msg = read
-      if msg.key?('value')
+      if msg&.key?('value')
         msg['value']
-      elsif msg.key?('ex')
-        puts msg['ex']
+      elsif msg&.key?('ex')
+        msg['ex']
       else
         raise "invalid message: #{msg.inspect}"
       end
