@@ -4,26 +4,50 @@ require 'bencode'
 
 module NREPL
   class Client
-    attr_reader :host, :port, :debug
-    alias debug? debug
+    attr_reader :host, :port
+
+    def self.open(**kwargs)
+      new(**kwargs).open
+    end
 
     def initialize(port: DEFAULT_PORT, host: DEFAULT_HOST)
-      @port  = port
-      @host  = host
-      @debug = debug
+      @port       = port
+      @host       = host
       @current_id = 0
     end
 
     private
 
-    attr_accessor :current_id, :current_session
+    attr_accessor :socket, :current_id, :current_session
 
-    def running?
+    public
+
+    def open?
       !socket.nil?
     end
 
-    def send_msg(msg)
-      open_socket! unless running?
+    def open
+      self.socket = TCPSocket.new(host, port)
+
+      self
+    end
+
+    def close
+      if open?
+        socket.close
+        self.socket = nil
+      end
+
+      self
+    end
+
+    def reset
+      close
+      open
+    end
+
+    def write(msg)
+      raise "need to open first before writing" unless open?
 
       msg.update('id' => @current_id += 1)
       msg.update('session' => current_session) if current_session
@@ -32,37 +56,15 @@ module NREPL
       socket.flush
     end
 
-    def receive_msg
+    def read
       Utils.bencode_read(socket).tap do
-        reset_socket!
+        reset
       end
     end
-
-    def open_socket!
-      self.socket = TCPSocket.new(host, port)
-
-      self
-    end
-
-    def close_socket!
-      if running?
-        socket.close
-        self.socket = nil
-      end
-
-      self
-    end
-
-    def reset_socket!
-      close_socket!
-      open_socket!
-    end
-
-    public
 
     def eval(code)
-      send_msg('op' => 'eval', 'code' => code)
-      msg = receive_msg
+      write('op' => 'eval', 'code' => code)
+      msg = read
       if msg.key?('value')
         msg['value']
       elsif msg.key?('ex')
@@ -73,8 +75,8 @@ module NREPL
     end
 
     def register_session
-      send_msg('op' => 'clone')
-      msg = receive_msg
+      write('op' => 'clone')
+      msg = read
 
       if msg['new_session'] != 'none'
         self.current_session = msg['new_session']
@@ -84,9 +86,5 @@ module NREPL
 
       self
     end
-
-    private
-
-    attr_accessor :socket
   end
 end
