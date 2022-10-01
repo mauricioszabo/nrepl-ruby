@@ -72,7 +72,7 @@ module NREPL
       end
     end
 
-    def create_session
+    def register_session
       send_msg('op' => 'clone')
       msg = receive_msg
 
