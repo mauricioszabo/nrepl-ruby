@@ -12,6 +12,10 @@ module NREPL
     attr_reader :debug, :port, :host
     alias debug? debug
 
+    def self.start(**kwargs)
+      new(**kwargs).start
+    end
+
     def initialize(port: DEFAULT_PORT, host: DEFAULT_HOST, debug: false)
       @port  = port
       @host  = host
