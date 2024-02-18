@@ -7,12 +7,8 @@ require 'bencode'
 require 'socket'
 
 def evaluate_code(code, file, line)
-  puts "EVAL:\n#{code}"
-  p file, line
-  eval(code, nil, file, line)
+  eval(code, nil, file || "EVAL", line || 0)
 end
-
-Kernel.methods.map(&:to_s)
 
 module NREPL
   class Server
