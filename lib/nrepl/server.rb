@@ -6,6 +6,14 @@
 require 'bencode'
 require 'socket'
 
+def evaluate_code(code, file, line)
+  puts "EVAL:\n#{code}"
+  p file, line
+  eval(code, nil, file, line)
+end
+
+Kernel.methods.map(&:to_s)
+
 module NREPL
   class Server
     DEFAULT_EXIT_PROC = lambda do
@@ -46,7 +54,7 @@ module NREPL
 
       str   = msg['code']
       code  = str == 'nil' ? nil : str
-      value = code.nil? ? nil : eval(code)
+      value = code.nil? ? nil : evaluate_code(code, msg['file'], msg['line'])
 
       send_msg(client, response_for(msg, { 'value' => value.to_s, 'status' => ['done'] }))
     end
@@ -93,23 +101,26 @@ module NREPL
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
-          msg = Utils.bencode_read(client)
-          puts "Received: #{msg.inspect}" if debug?
-          next unless msg
+          loop do
+            msg = Utils.bencode_read(client)
+            return if(msg.nil?)
+            puts "Received: #{msg.inspect}" if debug?
+            next unless msg
 
-          case msg['op']
-          when 'clone'
-            register_session(client, msg)
-          when 'describe'
-            describe_msg(client, msg)
-          when 'eval'
-            begin
-              eval_msg(client, msg)
-            rescue => e
-              send_exception(client, msg, e)
+            case msg['op']
+            when 'clone'
+              register_session(client, msg)
+            when 'describe'
+              describe_msg(client, msg)
+            when 'eval'
+              begin
+                eval_msg(client, msg)
+              rescue Exception => e
+                send_exception(client, msg, e)
+              end
+            else
+              raise "unknown operation: #{msg['op'].inspect}"
             end
-          else
-            raise "unknown operation: #{msg['op'].inspect}"
           end
         end
       end
