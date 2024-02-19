@@ -62,7 +62,7 @@ module NREPL
     end
 
     def read
-      Utils.bencode_read(socket).tap do
+      BEncode::Parser.new(socket).parse!.tap do
         reset
       end
     end
