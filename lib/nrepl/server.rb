@@ -7,7 +7,7 @@ require 'bencode'
 require 'socket'
 
 def evaluate_code(code, file, line)
-  eval(code, nil, file || "EVAL", line || 0)
+  eval(code, nil, file || "EVAL", line || 0).inspect
 end
 
 module NREPL
@@ -29,6 +29,7 @@ module NREPL
       @port  = port
       @host  = host
       @debug = debug
+      @counter = 0
     end
 
     private
@@ -97,28 +98,69 @@ module NREPL
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
+          pending_evals = {}
+          bencode = BEncode::Parser.new(client)
           loop do
-            msg = Utils.bencode_read(client)
-            return if(msg.nil?)
+            break if client.eof?
+            msg = bencode.parse!
             puts "Received: #{msg.inspect}" if debug?
             next unless msg
 
-            case msg['op']
-            when 'clone'
-              register_session(client, msg)
-            when 'describe'
-              describe_msg(client, msg)
-            when 'eval'
-              begin
-                eval_msg(client, msg)
-              rescue Exception => e
-                send_exception(client, msg, e)
-              end
-            else
-              raise "unknown operation: #{msg['op'].inspect}"
-            end
+            treat_msg(pending_evals, client, msg)
           end
         end
+      end
+    end
+
+    def treat_msg(pending_evals, client, msg)
+      case msg['op']
+      when 'clone'
+        register_session(client, msg)
+      when 'describe'
+        describe_msg(client, msg)
+      when 'eval'
+        msg['id'] ||= "eval_#{++@counter}"
+        pending_evals.update(
+          msg['id'] => Thread.new do
+            begin
+              eval_msg(client, msg)
+            rescue Exception => e
+              send_exception(client, msg, e)
+            ensure
+              pending_evals.delete(msg['id'])
+            end
+          end
+        )
+      when 'interrupt'
+        id = if(msg['interrupt-id'])
+          msg['interrupt-id']
+        else
+          pending_evals.keys.first
+        end
+        thread = pending_evals[id]
+        msg['id'] ||= (id || 'unknown')
+
+        if(thread)
+          thread.kill
+          pending_evals.delete(id)
+          send_msg(client, response_for(msg, {
+            'status' => ['done', 'interrupted'],
+            'op' => msg['op']
+          }))
+
+        else
+          send_msg(client, response_for(msg, {
+            'status' => ['done'],
+            'op' => msg['op']
+          }))
+        end
+
+      else
+        send_msg(client, response_for(msg, {
+          'op' => msg['op'],
+          'status' => ['done', 'error'],
+          'error' => "unknown operation: #{msg['op'].inspect}"
+        }))
       end
     end
   end
