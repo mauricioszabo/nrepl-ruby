@@ -82,8 +82,6 @@ NREPL.stop!
     })
     client_write.close
     t.join
-
-    # subject.treat_msg(eval_msg)
   end
 
   it "is a test" do
@@ -94,40 +92,3 @@ NREPL.stop!
     expect(true).to be(false)
   end
 end
-
-
-# Pry.method(:start).source_location
-# binding.method(:pry).source_location
-# # RSpec::Core::Runner.new(
-# #   RSpec::Core::ConfigurationOptions.new(["/home/mauricio/projects/nrepl-ruby/spec/server_spec.rb:6"]),
-# # ).run($stdout, $stderr)
-# # RSpec.clear_examples
-#
-#
-# eval('
-#   class Foo
-#     def a
-#       foobar
-#     end
-#   end
-#   Foo.new.a + foobar
-# ', binding.extend(Module.new.tap { |m|
-#   def __nrepl__stop!
-#     10
-#   end
-# }))
-#
-# b = binding
-# b.local_variable_set(:foobar2, 10)
-# binding.methods.map(&:to_s).sort
-# eval(' def a; b; end; a ', b)
-#
-#
-# eval('
-#   class Foo
-#     def a
-#       foobar1
-#     end
-#   end
-#   Foo.new.a + foobar1
-# ')
