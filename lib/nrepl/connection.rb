@@ -42,6 +42,7 @@ module NREPL
         @stopped_binding = nil
         @stopped_in.close if @stopped_in
         @stopped_in = nil
+        remove_stop_function!(id)
 
         send_msg(response_for(msg, {
           'status' => ['done'],
@@ -92,7 +93,6 @@ module NREPL
         rescue Exception => e
           send_exception(msg, e)
         ensure
-          remove_stop_function!(id)
           @pending_evals.delete(id)
         end
       end

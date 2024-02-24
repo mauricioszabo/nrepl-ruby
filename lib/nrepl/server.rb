@@ -5,7 +5,6 @@
 
 require 'bencode'
 require 'socket'
-require 'pry'
 require_relative 'connection'
 
 module NREPL
