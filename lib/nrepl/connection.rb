@@ -38,11 +38,9 @@ module NREPL
       when 'eval_pause'
         eval_op(msg, true)
       when 'eval_resume'
-        id = msg['id']
-        @stopped_binding = nil
-        @stopped_in.close if @stopped_in
-        @stopped_in = nil
-        remove_stop_function!(id)
+        msg['id'] ||= "eval_#{++@counter}"
+        stop_id = msg['stop_id']
+        clear_eval!(stop_id)
 
         send_msg(response_for(msg, {
           'status' => ['done'],
@@ -60,8 +58,7 @@ module NREPL
 
         if(thread)
           thread.kill
-          remove_stop_function!(id)
-          @pending_evals.delete(id)
+          clear_eval!(id)
           send_msg(response_for(msg, {
             'status' => ['done', 'interrupted'],
             'op' => msg['op']
@@ -86,23 +83,30 @@ module NREPL
     private def eval_op(msg, stop)
       msg['id'] ||= "eval_#{++@counter}"
       id = msg['id']
-      @pending_evals[id] = {}
+      @pending_evals[id] = msg
       @pending_evals[id][:thread] = Thread.new do
+        Thread.current[:eval_id] = msg['id']
+
         begin
           eval_msg(msg, stop)
         rescue Exception => e
           send_exception(msg, e)
         ensure
-          @pending_evals.delete(id)
+          @pending_evals.delete(id) unless stop
         end
       end
     end
 
-    private def remove_stop_function!(id)
+    private def clear_eval!(id)
       stop_function_name = @pending_evals.fetch(id, {})[:stop_function_name]
       if stop_function_name
         NREPL.singleton_class.send(:undef_method, stop_function_name)
       end
+
+      input = @pending_evals.fetch(id, {})[:in]
+      input.close if input
+
+      @pending_evals.delete(id)
     end
 
     private def response_for(old_msg, msg)
@@ -120,39 +124,54 @@ module NREPL
 
       str   = msg['code']
       code  = str == 'nil' ? nil : str
+      pending_eval = @pending_evals[msg['id']]
       value = unless code.nil?
         if stop
           @@debug_counter += 1
           method_name = "stop_#{@@debug_counter}_#{rand(9999999999).to_s(32)}"
-          @pending_evals[msg['id']][:stop_function_name] = method_name
+          pending_eval[:stop_function_name] = method_name
           code = code.sub(/^NREPL\.stop!$/, "NREPL.#{method_name}(binding)")
           define_stop_function!(msg, method_name)
         end
-        evaluate_code(code, msg['file'], msg['line'], @stopped_binding)
+
+        original_bind = @pending_evals.fetch(msg['stop_id'], {})[:binding] if msg['stop_id']
+        evaluate_code(code, msg['file'], msg['line'], original_bind)
       end
 
-      # unless stop
-      unless @pending_evals[msg['id']][:stopped]
+      unless pending_eval[:stopped?]
         send_msg(response_for(msg, {'value' => value.to_s, 'status' => ['done']}))
       end
     end
 
     private def define_stop_function!(msg, method_name)
       out, inp = IO.pipe
-      send_stopped = proc do |ctx_binding|
-        @pending_evals[msg['id']][:stopped] = true
-        @stopped_binding = ctx_binding
-        send_msg(response_for(msg, { 'status' => ['done', 'paused'] }))
+      send_stopped = proc do |ctx_binding, original_msg|
+        stop_msg = @pending_evals[msg['id']]
+        if stop_msg
+          stop_msg.update(
+            in: inp,
+            binding: ctx_binding
+          )
+        end
+        @pending_evals[original_msg['id']].update(stopped?: true)
+        send_msg(response_for(original_msg, {'status' => ['done', 'paused']}))
       end
-      @stopped_in = inp
 
-      treat = proc do |msg|
-        treat_msg(msg)
+      will_pause = proc do
+        eval_id = while(thread = Thread.current)
+          break thread[:eval_id] if thread[:eval_id]
+        end
+        original_msg = @pending_evals[eval_id] || {}
+        stop_id = original_msg['stop_id']
+        original_msg if stop_id == msg['id']
       end
 
       NREPL.singleton_class.send(:define_method, method_name) do |ctx_binding|
-        send_stopped.call(ctx_binding)
-        out.read
+        original_msg = will_pause.call
+        if original_msg
+          send_stopped.call(ctx_binding, original_msg)
+          out.read
+        end
       end
     end
 
@@ -183,7 +202,7 @@ end
 
 # To avoid locally binding with the NREPL::Connection module
 b = binding
-define_method(:evaluate_code)do |code, file, line, bind|
+define_method(:evaluate_code) do |code, file, line, bind|
   bind ||= b
   eval(code, bind, file || "EVAL", line || 0).inspect
 end

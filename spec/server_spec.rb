@@ -27,10 +27,10 @@ RSpec.describe NREPL::Server do
     result = BEncode::Parser.new(client_read)
     t = Thread.new { subject.treat_messages! }
     code = <<-RUBY
-      proc {
+      def stopped_call
         variable = 20
 NREPL.stop!
-      }.call
+      end
     RUBY
 
     eval_msg = {
@@ -38,14 +38,29 @@ NREPL.stop!
       'code' => code,
       'id' => 'first_eval'
     }
-    client_write.write(eval_msg.bencode)
+    client_write.write(eval_msg.merge("code"=>"#{code}\nstopped_call()").bencode)
     client_write.flush
     expect(result.parse!["status"]).to eql(["done", "error"])
 
+    eval_msg['id'] = 'define_breakpoint'
     eval_msg['op'] = 'eval_pause'
     client_write.write(eval_msg.bencode)
     expect(result.parse!).to eql({
-      "id"=>"first_eval",
+      "id"=>"define_breakpoint",
+      "value"=>":stopped_call",
+      "session"=>"none",
+      "status"=>["done"]
+    })
+
+    eval_msg = {
+      'op' => 'eval',
+      'code' => 'stopped_call()',
+      'stop_id' => 'define_breakpoint',
+      'id' => 'eval_to_breakpoint'
+    }
+    client_write.write(eval_msg.bencode)
+    expect(result.parse!).to eql({
+      "id"=>"eval_to_breakpoint",
       "session"=>"none",
       "status"=>["done", "paused"]
     })
@@ -53,6 +68,7 @@ NREPL.stop!
     eval_msg = {
       'op' => 'eval',
       'code' => 'variable',
+      'stop_id' => 'define_breakpoint',
       'id' => 'eval_when_stopped'
     }
     client_write.write(eval_msg.bencode)
@@ -64,7 +80,12 @@ NREPL.stop!
     })
 
     # Resume
-    resume_msg = {'op' => 'eval_resume', 'id' => "r"}
+    resume_msg = {
+      'op' => 'eval_resume',
+      'stop_id' => 'define_breakpoint',
+      'id' => "r",
+      "paused_id" => "define_breakpoint"
+    }
     client_write.write(resume_msg.bencode)
     expect(result.parse!).to eql({
       "id"=>"r",
