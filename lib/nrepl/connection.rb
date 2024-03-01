@@ -25,6 +25,7 @@ module NREPL
         treat_msg(msg)
         # end
       end
+      @pending_evals.each { |(i, _)| clear_eval!(i) }
     end
 
     def treat_msg(msg)
@@ -38,7 +39,7 @@ module NREPL
       when 'eval_pause'
         eval_op(msg, true)
       when 'eval_resume'
-        msg['id'] ||= "eval_#{++@counter}"
+        msg['id'] ||= "eval_#{@counter += 1}"
         stop_id = msg['stop_id']
         clear_eval!(stop_id)
 
@@ -81,7 +82,7 @@ module NREPL
     end
 
     private def eval_op(msg, stop)
-      msg['id'] ||= "eval_#{++@counter}"
+      msg['id'] ||= "eval_#{@counter += 1}"
       id = msg['id']
       @pending_evals[id] = msg
       @pending_evals[id][:thread] = Thread.new do
