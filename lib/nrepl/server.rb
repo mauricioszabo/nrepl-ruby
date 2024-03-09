@@ -6,11 +6,11 @@
 require 'bencode'
 require 'socket'
 require_relative 'connection'
+require_relative 'fake_stdout'
 
 module NREPL
   class Server
     DEFAULT_EXIT_PROC = lambda do
-      puts "Goodbye for now."
       Thread.exit
       exit(0)
     end
@@ -26,6 +26,7 @@ module NREPL
       @port  = port
       @host  = host
       @debug = debug
+      @connections = Set.new
     end
 
     private
@@ -45,6 +46,9 @@ module NREPL
       puts "Running in debug mode" if debug?
       record_port
 
+      $stdout = FakeStdout.new(@connections, "out")
+      $stderr = FakeStdout.new(@connections, "err")
+
       Signal.trap("INT", &DEFAULT_EXIT_PROC)
       Signal.trap("TERM", &DEFAULT_EXIT_PROC)
 
@@ -52,9 +56,25 @@ module NREPL
       loop do
         Thread.start(s.accept) do |client|
           connection = Connection.new(client, debug: debug?)
+          @connections << connection
           connection.treat_messages!
+          @connections.delete(connection)
         end
       end
     end
   end
 end
+
+# Sorry, no other way...
+module ThreadPatch
+  def initialize(*args, &b)
+    @parent = Thread.current
+    super
+  end
+
+  def parent
+    @parent
+  end
+end
+
+Thread.prepend(ThreadPatch)
