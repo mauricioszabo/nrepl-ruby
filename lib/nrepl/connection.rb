@@ -18,15 +18,11 @@ module NREPL
         msg = bencode.parse!
         debug "Received", msg
         next unless msg
-
-        # if @stopped
-        #   @stopped.write(msg.bencode)
-        #   @stopped.flush
-        # else
         treat_msg(msg)
-        # end
       end
-      @pending_evals.each { |(i, _)| clear_eval!(i) }
+      @pending_evals.each do |(i, _)|
+        clear_eval!(i)
+      end
     end
 
     def treat_msg(msg)
