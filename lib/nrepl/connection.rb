@@ -7,6 +7,7 @@ module NREPL
       @in = input
       @out = out
       @pending_evals = {}
+      @watch_functions = Set.new
       @watches = {}
       @counter = 0
     end
@@ -20,9 +21,8 @@ module NREPL
         next unless msg
         treat_msg(msg)
       end
-      @pending_evals.each do |(i, _)|
-        clear_eval!(i)
-      end
+      @pending_evals.each { |(i, _)| clear_eval!(i) }
+      @watch_functions.each { |fn_name| NREPL.singleton_class.send(:undef_method, fn_name) }
     end
 
     def treat_msg(msg)
@@ -34,7 +34,9 @@ module NREPL
       when 'eval'
         eval_op(msg, false)
       when 'eval_pause'
-        eval_op(msg, true)
+        eval_op(msg, :stop)
+      when 'eval_watch'
+        eval_op(msg, :watch)
       when 'eval_resume'
         msg['id'] ||= "eval_#{@counter += 1}"
         stop_id = msg['stop_id']
@@ -99,7 +101,7 @@ module NREPL
         rescue Exception => e
           send_exception(msg, e)
         ensure
-          @pending_evals.delete(id) unless stop
+          @pending_evals.delete(id) unless stop == :stop
         end
       end
     end
@@ -118,12 +120,6 @@ module NREPL
 
     private def response_for(old_msg, msg)
       msg.merge('session' => old_msg.fetch('session', 'none'), 'id' => old_msg.fetch('id', 'unknown'))
-    end
-
-    def send_msg(msg)
-      debug "Sending", msg
-      @out.write(msg.bencode)
-      @out.flush
     end
 
     private def eval_msg(msg, stop)
@@ -198,7 +194,10 @@ module NREPL
           'status' => ['done']
         )
       end
-      NREPL.singleton_class.send(:define_method, "watch_#{method_name}") do |ctx_binding|
+
+      watch_fun_name = "watch_#{method_name}"
+      @watch_functions << watch_fun_name
+      NREPL.singleton_class.send(:define_method, watch_fun_name) do |ctx_binding|
         send_watched.call(ctx_binding, caller)
       end
     end
@@ -228,6 +227,12 @@ module NREPL
     # @param [Exception] e
     def send_exception(msg, e)
       send_msg(response_for(msg, { 'ex' => e.message, 'status' => ['done', 'error'] }))
+    end
+
+    def send_msg(msg)
+      debug "Sending", msg
+      @out.write(msg.bencode)
+      @out.flush
     end
   end
 end
