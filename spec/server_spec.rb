@@ -134,95 +134,14 @@ NREPL.stop!
     })
 
     # Finally, it can evaluate under that id
-    eval_msg.update('code' => 'variable += 1', 'id' => 'eval_1', 'watch_id' => id)
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
-      "id"=>"eval_1",
-      "session"=>"none",
-      "value" => "41",
-      "status"=>["done"]
-    })
-
-    # And it'll keep the binding
-    eval_msg.update('code' => 'variable', 'id' => 'eval_2', 'watch_id' => id)
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
-      "id"=>"eval_2",
-      "session"=>"none",
-      "value" => "41",
-      "status"=>["done"]
-    })
-
-    # Finally, it can unwatch
-    client_write.write({'op' => 'unwatch', 'watch_id' => id}.bencode)
-    res = result.parse!.tap { |x| x.delete('id') }
-    expect(res).to eql({ 'op' => 'unwatch', 'session' => 'none', "status"=>["done"] })
-
-    # And the binding is gone
-    eval_msg.update('code' => 'variable', 'id' => 'eval_3', 'watch_id' => id)
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
-      "id"=>"eval_3",
-      "session"=>"none",
-      "ex" => "undefined local variable or method `variable' for main:Object",
-      "status"=>["done", "error"]
-    })
-    client_write.close
-    t.join
-  end
-
-  it "cleans up binds but still keep the function working" do
-    client_read, server_write = IO.pipe
-    server_read, client_write = IO.pipe
-    subject = NREPL::Connection.new(server_read, out: server_write)
-    result = BEncode::Parser.new(client_read)
-    t = Thread.new { subject.treat_messages! }
-
-    define_watch_point!(client_write, result)
-    # Then we eval_unwatch to remove the watch point and fix the code
-    # resume_msg = {
-    #   'op' => 'eval_resume',
-    #   'stop_id' => 'define_breakpoint',
-    #   'id' => "r",
-    #   "paused_id" => "define_breakpoint"
-    # }
-    # client_write.write(resume_msg.bencode)
-    # expect(result.parse!).to eql({
-    #   "id"=>"r",
-    #   "op"=>"eval_resume",
-    #   "session"=>"none",
-    #   "status"=>["done"]
-    # })
-
-    # Defines a "watch" point
     eval_msg = {
+      'id' => 'eval_1',
       'op' => 'eval_pause',
-      'code' => code,
-      'id' => 'eval_watch',
+      'code' => 'variable += 1',
+      'watch_id' => id,
       "file" => "/tmp/some_file.rb",
-      "line" => 20,
+      "line" => 20
     }
-    client_write.write(eval_msg.bencode)
-    client_write.flush
-    expect(result.parse!).to eql({
-      "id"=>"eval_watch",
-      "value"=>":stopped_call",
-      "session"=>"none",
-      "status"=>["done"]
-    })
-
-    id, parsed = eval_to_watch_method!(client_write, result)
-
-    # Then it'll get the result
-    expect(parsed).to eql({
-      # "id"=>"eval_to_watch",
-      "session"=>"none",
-      "value" => "42",
-      "status"=>["done"]
-    })
-
-    # Finally, it can evaluate under that id
-    eval_msg.update('code' => 'variable += 1', 'id' => 'eval_1', 'watch_id' => id)
     client_write.write(eval_msg.bencode)
     expect(result.parse!).to eql({
       "id"=>"eval_1",
