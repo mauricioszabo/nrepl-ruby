@@ -22,6 +22,7 @@ module NREPL
       @host  = host
       @debug = debug
       @connections = Set.new
+      NREPL.class_variable_set(:@@connections, @connections)
     end
 
     private def record_port
@@ -35,8 +36,8 @@ module NREPL
       puts "Running in debug mode" if debug?
       record_port
 
-      # $stdout = FakeStdout.new(@connections, "out")
-      # $stderr = FakeStdout.new(@connections, "err")
+      $stdout = FakeStdout.new(@connections, "out")
+      $stderr = FakeStdout.new(@connections, "err")
 
       Signal.trap("INT") { stop }
       Signal.trap("TERM") { stop }
@@ -44,13 +45,10 @@ module NREPL
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
-          puts "START"
-          connection = Connection.new(client, debug: debug?)
+          connection = Connection.new(client, debug: debug?, watches: @@watches)
           @connections << connection
           connection.treat_messages!
-          puts "LOL"
           @connections.delete(connection)
-          puts "Deleted Conn"
         end
       end
     end

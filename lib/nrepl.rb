@@ -9,4 +9,23 @@ module NREPL
 
   require_relative 'nrepl/server'
   require_relative 'nrepl/client'
+  @@watches = {}
+  @@connections = Set.new
+
+  def self.watch!(binding, id=nil)
+    (file, row) = caller[0].split(/:/)
+    id ||= "#{file}:#{row}"
+    row = row.to_i
+
+    @@watches[id] = {binding: binding}
+    @@connections.each do |connection|
+      connection.send_msg(
+        'op' => 'hit_watch',
+        'id' => id,
+        'file' => file,
+        'line' => row,
+        'status' => ['done']
+      )
+    end
+  end
 end

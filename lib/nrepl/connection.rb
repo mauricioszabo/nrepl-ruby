@@ -2,13 +2,12 @@ module NREPL
   class Connection
     @@debug_counter = 0
 
-    def initialize(input, debug: false, out: input)
+    def initialize(input, debug: false, out: input, watches: NREPL.class_variable_get(:@@watches))
       @debug = debug
       @in = input
       @out = out
       @pending_evals = {}
-      @watch_functions = Set.new
-      @watches = {}
+      @watches = watches
       @counter = 0
     end
 
@@ -22,7 +21,6 @@ module NREPL
         treat_msg(msg)
       end
       @pending_evals.each { |(i, _)| clear_eval!(i) }
-      @watch_functions.each { |fn_name| NREPL.singleton_class.send(:undef_method, fn_name) }
     end
 
     def treat_msg(msg)
@@ -34,9 +32,7 @@ module NREPL
       when 'eval'
         eval_op(msg, false)
       when 'eval_pause'
-        eval_op(msg, :stop)
-      when 'eval_watch'
-        eval_op(msg, :watch)
+        eval_op(msg, true)
       when 'eval_resume'
         msg['id'] ||= "eval_#{@counter += 1}"
         stop_id = msg['stop_id']
@@ -101,7 +97,7 @@ module NREPL
         rescue Exception => e
           send_exception(msg, e)
         ensure
-          @pending_evals.delete(id) unless stop == :stop
+          @pending_evals.delete(id) unless stop
         end
       end
     end
@@ -131,7 +127,7 @@ module NREPL
           @@debug_counter += 1
           method_name = "_#{@@debug_counter}_#{rand(9999999999).to_s(32)}"
           pending_eval[:stop_function_name] = method_name
-          code = code.gsub(/^NREPL\.(stop|watch)!$/, "NREPL.\\1_#{method_name}(binding)")
+          code = code.gsub(/^NREPL\.stop!$/, "NREPL.stop_#{method_name}(binding)")
           define_stop_function!(msg, method_name)
         end
 
@@ -180,25 +176,6 @@ module NREPL
         if original_msg
           send_stopped.call(ctx_binding, original_msg, caller)
         end
-      end
-
-      send_watched = proc do |ctx_binding, caller|
-        (file, row) = caller[0].split(/:/)
-        id = "watch_#{@counter += 1}"
-        @watches[id] = {binding: ctx_binding}
-        send_msg(
-          'op' => 'hit_watch',
-          'id' => id,
-          'file' => file,
-          'line' => row.to_i,
-          'status' => ['done']
-        )
-      end
-
-      watch_fun_name = "watch_#{method_name}"
-      @watch_functions << watch_fun_name
-      NREPL.singleton_class.send(:define_method, watch_fun_name) do |ctx_binding|
-        send_watched.call(ctx_binding, caller)
       end
     end
 

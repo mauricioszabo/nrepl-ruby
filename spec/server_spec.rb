@@ -196,6 +196,7 @@ class NREPLConnection
     @connection = NREPL::Connection.new(@server_read, out: @server_write)
     @result = BEncode::Parser.new(@client_read)
     @t = Thread.new { @connection.treat_messages! }
+    NREPL.class_variable_set(:@@connections, Set[@connection])
   end
 
   def send!(message)
@@ -217,14 +218,14 @@ class NREPLConnection
     code = <<-RUBY
       def stopped_call
         variable = 40
-NREPL.watch!
+        NREPL.watch! binding
         variable + 2
       end
     RUBY
 
     # Defines a "watch" point
     eval_msg = {
-      'op' => 'eval_pause',
+      'op' => 'eval',
       'code' => code,
       'id' => 'eval_watch',
       "file" => "/tmp/some_file.rb",
