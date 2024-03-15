@@ -10,11 +10,6 @@ require_relative 'fake_stdout'
 
 module NREPL
   class Server
-    DEFAULT_EXIT_PROC = lambda do
-      Thread.exit
-      exit(0)
-    end
-
     attr_reader :debug, :port, :host
     alias debug? debug
 
@@ -29,38 +24,40 @@ module NREPL
       @connections = Set.new
     end
 
-    private
-
-    attr_reader :irb
-
-    def record_port
+    private def record_port
       File.open(PORT_FILENAME, 'w+') do |f|
         f.write(port)
       end
     end
-
-    public
 
     def start
       puts "nREPL server started on port #{port} on host #{host} - nrepl://#{host}:#{port}"
       puts "Running in debug mode" if debug?
       record_port
 
-      $stdout = FakeStdout.new(@connections, "out")
-      $stderr = FakeStdout.new(@connections, "err")
+      # $stdout = FakeStdout.new(@connections, "out")
+      # $stderr = FakeStdout.new(@connections, "err")
 
-      Signal.trap("INT", &DEFAULT_EXIT_PROC)
-      Signal.trap("TERM", &DEFAULT_EXIT_PROC)
+      Signal.trap("INT") { stop }
+      Signal.trap("TERM") { stop }
 
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
+          puts "START"
           connection = Connection.new(client, debug: debug?)
           @connections << connection
           connection.treat_messages!
+          puts "LOL"
           @connections.delete(connection)
+          puts "Deleted Conn"
         end
       end
+    end
+
+    def stop
+      Thread.exit
+      exit(0)
     end
   end
 end
