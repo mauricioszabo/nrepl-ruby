@@ -109,14 +109,17 @@ NREPL.stop!
   end
 
   it "binds variables in specific contexts" do
-    client_read, server_write = IO.pipe
-    server_read, client_write = IO.pipe
-    subject = NREPL::Connection.new(server_read, out: server_write)
-    result = BEncode::Parser.new(client_read)
-    t = Thread.new { subject.treat_messages! }
+    client = NREPLConnection.new
 
-    define_watch_point!(client_write, result)
-    id, parsed = eval_to_watch_method!(client_write, result)
+    res = client.define_watch_point!
+    expect(res).to eql({
+      "id"=>"eval_watch",
+      "value"=>":stopped_call",
+      "session"=>"none",
+      "status"=>["done"]
+    })
+
+    id, parsed = client.eval_to_watch_method!
     expect(parsed).to eql({
       "op"=>"hit_watch",
       "file" => "/tmp/some_file.rb",
@@ -126,7 +129,7 @@ NREPL.stop!
     expect(id).to_not be(nil)
 
     # Then it'll get the result
-    expect(result.parse!).to eql({
+    expect(client.read!).to eql({
       "id"=>"eval_to_watch",
       "session"=>"none",
       "value" => "42",
@@ -142,8 +145,8 @@ NREPL.stop!
       "file" => "/tmp/some_file.rb",
       "line" => 20
     }
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
+    client.send!(eval_msg)
+    expect(client.read!).to eql({
       "id"=>"eval_1",
       "session"=>"none",
       "value" => "41",
@@ -152,8 +155,8 @@ NREPL.stop!
 
     # And it'll keep the binding
     eval_msg.update('code' => 'variable', 'id' => 'eval_2', 'watch_id' => id)
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
+    client.send!(eval_msg)
+    expect(client.read!).to eql({
       "id"=>"eval_2",
       "session"=>"none",
       "value" => "41",
@@ -161,21 +164,20 @@ NREPL.stop!
     })
 
     # Finally, it can unwatch
-    client_write.write({'op' => 'unwatch', 'watch_id' => id}.bencode)
-    res = result.parse!.tap { |x| x.delete('id') }
+    client.send!('op' => 'unwatch', 'watch_id' => id)
+    res = client.read!.tap { |x| x.delete('id') }
     expect(res).to eql({ 'op' => 'unwatch', 'session' => 'none', "status"=>["done"] })
 
     # And the binding is gone
     eval_msg.update('code' => 'variable', 'id' => 'eval_3', 'watch_id' => id)
-    client_write.write(eval_msg.bencode)
-    expect(result.parse!).to eql({
+    client.send!(eval_msg)
+    expect(client.read!).to eql({
       "id"=>"eval_3",
       "session"=>"none",
       "ex" => "undefined local variable or method `variable' for main:Object",
       "status"=>["done", "error"]
     })
-    client_write.close
-    t.join
+    client.close
   end
 
   # it "is a test" do
@@ -185,49 +187,6 @@ NREPL.stop!
   # it "breaks eval" do
   #   expect(true).to be(false)
   # end
-end
-
-def define_watch_point!(client_write, result)
-  code = <<-RUBY
-    def stopped_call
-      variable = 40
-NREPL.watch!
-      variable + 2
-    end
-  RUBY
-
-  # Defines a "watch" point
-  eval_msg = {
-    'op' => 'eval_pause',
-    'code' => code,
-    'id' => 'eval_watch',
-    "file" => "/tmp/some_file.rb",
-    "line" => 20,
-  }
-  client_write.write(eval_msg.bencode)
-  client_write.flush
-  expect(result.parse!).to eql({
-    "id"=>"eval_watch",
-    "value"=>":stopped_call",
-    "session"=>"none",
-    "status"=>["done"]
-  })
-end
-
-def eval_to_watch_method!(client_write, result)
-  # Here's the difference: in this case, EVERY watched expression is evaluated, so we
-  # don't need to pass `stop_id`. Also, we will always keep running the code
-  eval_msg = {
-    'op' => 'eval',
-    'code' => 'stopped_call()',
-    'id' => 'eval_to_watch'
-  }
-  client_write.write(eval_msg.bencode)
-
-  # First it'll hit the pause line:
-  parsed = result.parse!
-  id = parsed.delete('id')
-  [id, parsed]
 end
 
 class NREPLConnection
@@ -252,5 +211,40 @@ class NREPLConnection
     @client_write.close
     @server_write.close
     @t.join
+  end
+
+  def define_watch_point!
+    code = <<-RUBY
+      def stopped_call
+        variable = 40
+NREPL.watch!
+        variable + 2
+      end
+    RUBY
+
+    # Defines a "watch" point
+    eval_msg = {
+      'op' => 'eval_pause',
+      'code' => code,
+      'id' => 'eval_watch',
+      "file" => "/tmp/some_file.rb",
+      "line" => 20,
+    }
+    send!(eval_msg)
+    read!
+  end
+
+  def eval_to_watch_method!
+    eval_msg = {
+      'op' => 'eval',
+      'code' => 'stopped_call()',
+      'id' => 'eval_to_watch'
+    }
+    send!(eval_msg)
+
+    # First it'll hit the pause line:
+    parsed = read!
+    id = parsed.delete('id')
+    [id, parsed]
   end
 end
