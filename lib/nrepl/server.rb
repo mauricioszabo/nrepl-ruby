@@ -45,7 +45,7 @@ module NREPL
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
-          connection = Connection.new(client, debug: debug?, watches: @@watches)
+          connection = Connection.new(client, debug: debug?)
           @connections << connection
           connection.treat_messages!
           @connections.delete(connection)
