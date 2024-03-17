@@ -8,4 +8,5 @@ Gem::Specification.new do |s|
   s.files       = ["lib/nrepl.rb", "lib/nrepl/server.rb", "lib/connection.rb", "lib/fake_stdout.rb"]
   s.homepage    = "https://rubygems.org/gems/nrepl-lazuli"
   s.license     = "MIT"
+  s.add_runtime_dependency "bencode", ["= 0.8.2"]
 end
