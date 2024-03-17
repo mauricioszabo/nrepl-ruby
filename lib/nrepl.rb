@@ -3,12 +3,12 @@
 require_relative 'nrepl/version'
 
 module NREPL
+  VERSION = '0.1.0'
   DEFAULT_PORT  = 7888
   DEFAULT_HOST  = '127.0.0.1'
   PORT_FILENAME = '.nrepl-port'
 
   require_relative 'nrepl/server'
-  require_relative 'nrepl/client'
   @@watches = {}
   @@connections = Set.new
 

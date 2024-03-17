@@ -51,6 +51,8 @@ module NREPL
           @connections.delete(connection)
         end
       end
+    ensure
+      File.unlink(PORT_FILENAME)
     end
 
     def stop
