@@ -36,8 +36,8 @@ module NREPL
       puts "Running in debug mode" if debug?
       record_port
 
-      $stdout = FakeStdout.new(@connections, "out")
-      $stderr = FakeStdout.new(@connections, "err")
+      $stdout = FakeStdout.new(@connections, STDOUT, "out")
+      $stderr = FakeStdout.new(@connections, STDERR, "err")
 
       Signal.trap("INT") { stop }
       Signal.trap("TERM") { stop }
