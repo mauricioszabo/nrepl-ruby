@@ -8,14 +8,21 @@ module NREPL
 
     def <<(text)
       print(text)
+      nil
     end
 
     def print(text)
       write(text.to_s)
+      nil
     end
 
     def puts(text)
       write("#{text}\n")
+      nil
+    end
+
+    def method_missing(method, *)
+      @io.send(method, *)
     end
 
     def write(text)
