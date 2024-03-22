@@ -1,7 +1,3 @@
-# nrepl-ruby
+# NRepl-Lazuli
 
-An nREPL server and client for Ruby
-
-# Author
-
-Delon Newman <contact@delonnewman.name>
+An nREPL server for Ruby, to be used with Lazuli plug-in
