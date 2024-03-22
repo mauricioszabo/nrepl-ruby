@@ -21,8 +21,8 @@ module NREPL
       nil
     end
 
-    def method_missing(method, *)
-      @io.send(method, *)
+    def method_missing(method, *args)
+      @io.send(method, *args)
     end
 
     def write(text)
