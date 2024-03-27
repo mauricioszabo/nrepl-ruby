@@ -1,9 +1,10 @@
 module NREPL
-  class FakeStdout
+  class FakeStdout < SimpleDelegator
     def initialize(connections, io, kind)
       @connections = connections
       @io = io
       @kind = kind
+      super(io)
     end
 
     def <<(text)
@@ -21,33 +22,18 @@ module NREPL
       nil
     end
 
-    def method_missing(method, *args)
-      @io.send(method, *args)
-    end
-
     def write(text)
-      @io.write(text)
       @connections.each do |conn|
         conn.send_msg(
           @kind => text
         )
       end
+      @io.write(text)
     end
 
     def flush
+      @connections.each(&:flush)
       @io.flush
-    end
-
-    def close
-      @io.close
-    end
-
-    def sync
-      @io.sync
-    end
-
-    def sync=(val)
-      @io.sync = val
     end
   end
 end
