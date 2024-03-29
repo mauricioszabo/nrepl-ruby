@@ -30,10 +30,5 @@ module NREPL
       end
       @io.write(text)
     end
-
-    def flush
-      @connections.each(&:flush)
-      @io.flush
-    end
   end
 end
