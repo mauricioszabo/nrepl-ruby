@@ -60,18 +60,55 @@ module NREPL
       exit(0)
     end
   end
-end
 
-# Sorry, no other way...
-module ThreadPatch
-  def initialize(*args, &b)
-    @parent = Thread.current
-    super
+  # Sorry, no other way...
+  module ThreadPatch
+    def initialize(*args, &b)
+      @parent = Thread.current
+      super
+    end
+
+    def parent
+      @parent
+    end
   end
 
-  def parent
-    @parent
+  Thread.prepend(ThreadPatch)
+
+  # Also...
+  module MethodLocationFixer
+    def __lazuli_source_location
+      @__lazuli_source_location || source_location
+    end
+  end
+
+  module DefinitionFixer
+    @@definitions = {}
+
+    def __lazuli_source_location(method)
+      ancestors.each do |klass|
+        loc = (klass.instance_variable_get(:@__lazuli_methods) || {})[method]
+        return loc if loc
+      end
+      return instance_method(method).source_location
+    end
+
+    def method_added(method_name)
+      return if method_name == :__lazuli_source_location
+      # puts "Thing added #{method_name}"
+      path = caller.reject { |x| x =~ /gems.*gems/ }[0]
+      if path
+        (file, row) = path.split(/:/)
+
+        known = instance_variable_get(:@__lazuli_methods)
+        if !known
+          known = {}
+          instance_variable_set(:@__lazuli_methods, known)
+        end
+        known[method_name] = [file, row.to_i]
+      end
+    end
+
+    Module.prepend(DefinitionFixer)
   end
 end
-
-Thread.prepend(ThreadPatch)
