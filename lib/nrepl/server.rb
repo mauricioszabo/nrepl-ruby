@@ -17,11 +17,16 @@ module NREPL
       new(**kwargs).start
     end
 
-    def initialize(port: DEFAULT_PORT, host: DEFAULT_HOST, debug: false)
+    def self.bind!(binding, **kwargs)
+      new(**kwargs.merge(binding: binding)).start
+    end
+
+    def initialize(port: DEFAULT_PORT, host: DEFAULT_HOST, debug: false, binding: nil)
       @port  = port
       @host  = host
       @debug = debug
       @connections = Set.new
+      @binding = binding
       NREPL.class_variable_set(:@@connections, @connections)
     end
 
@@ -45,7 +50,7 @@ module NREPL
       s = TCPServer.new(host, port)
       loop do
         Thread.start(s.accept) do |client|
-          connection = Connection.new(client, debug: debug?)
+          connection = Connection.new(client, debug: debug?, binding: @binding)
           @connections << connection
           connection.treat_messages!
           @connections.delete(connection)
