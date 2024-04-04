@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "nrepl-lazuli"
-  s.version     = "0.1.3"
+  s.version     = "0.2.0"
   s.summary     = "A Ruby nREPL server"
   s.description = "A Ruby nREPL server, made to be used with Lazuli plug-in (but can be used with any nREPL client too)"
   s.authors     = ["Maurício Szabo"]
