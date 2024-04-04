@@ -1,3 +1,5 @@
+require "delegate"
+
 module NREPL
   class FakeStdout < SimpleDelegator
     def initialize(connections, io, kind)

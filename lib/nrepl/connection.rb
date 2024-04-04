@@ -2,13 +2,19 @@ module NREPL
   class Connection
     @@debug_counter = 0
 
-    def initialize(input, debug: false, out: input, watches: NREPL.class_variable_get(:@@watches))
+    def initialize(
+      input, debug: false, out: input,
+      watches: NREPL.class_variable_get(:@@watches), binding: nil,
+      auto_bindings: {}
+    )
       @debug = debug
       @in = input
       @out = out
       @pending_evals = {}
       @watches = watches
       @counter = 0
+      @binding = binding
+      @auto_bindings = auto_bindings
     end
 
     def treat_messages!
@@ -75,7 +81,15 @@ module NREPL
             'op' => msg['op']
           }))
         end
-
+      when 'watches_for_file'
+        msg['id'] ||= "eval_#{@counter += 1}"
+        file = msg['file']
+        rows_bindings = @auto_bindings[file] || {}
+        send_msg(response_for(msg, {
+          'status' => ['done'],
+          'rows' => rows_bindings.keys.sort,
+          'op' => msg['op']
+        }))
       else
         send_msg(response_for(msg, {
           'op' => msg['op'],
@@ -135,6 +149,8 @@ module NREPL
           @pending_evals.fetch(msg['stop_id'], {})[:binding]
         elsif msg['watch_id']
           @watches.fetch(msg['watch_id'], {})[:binding]
+        else
+          find_row_based_binding(msg) || @binding
         end
         evaluate_code(code, msg['file'], msg['line'], original_bind)
       end
@@ -142,6 +158,17 @@ module NREPL
       unless pending_eval[:stopped?]
         send_msg(response_for(msg, {'value' => value.to_s, 'status' => ['done']}))
       end
+    end
+
+    private def find_row_based_binding(msg)
+      file = msg['file']
+      row = msg['line']
+      return if !file || !row
+
+      rows_bindings = @auto_bindings[file]
+      return unless rows_bindings
+      found_row = row.downto(-1).find { |k| rows_bindings[k] }
+      rows_bindings[found_row]
     end
 
     private def define_stop_function!(msg, method_name)
