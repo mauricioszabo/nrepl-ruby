@@ -25,5 +25,6 @@ module NREPL
         'status' => ['done']
       )
     end
+    nil
   end
 end
